@@ -1,0 +1,36 @@
+# Google Markdown Style Guide Configuration
+# https://google.github.io/styleguide/docguide/style.html
+
+[global]
+line_length = 80
+
+# Headings: ATX-style only (# Heading), not Setext (underlines)
+[MD003]
+style = "atx"
+
+# Lists: Google uses asterisk (*) for unordered lists
+[MD004]
+style = "asterisk"
+
+# Lists: 4-space indent for nesting
+[MD007]
+indent = 4
+
+# Trailing spaces: Google says use backslash for line breaks, not trailing spaces
+[MD009]
+strict = true
+
+# Lists: Google uses lazy numbering (all 1.) for long lists
+[MD029]
+style = "one_or_ordered"
+
+# Lists: 3 spaces after bullet, 2 after number
+[MD030]
+ul_single = 3
+ul_multi = 3
+ol_single = 2
+ol_multi = 2
+
+# Code blocks: Fenced (```) preferred over indented
+[MD046]
+style = "fenced"

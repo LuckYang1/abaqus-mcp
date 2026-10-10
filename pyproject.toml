@@ -1,0 +1,34 @@
+[project]
+name = "abaqus-mcp"
+version = "1.0.0"
+description = "Local MCP server and Abaqus/CAE bridge plugin merged from Abaqus-Control-MCP 2.0.0 and the CAE-Agent-Hub Abaqus MCP 5.0.0."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+keywords = ["abaqus", "mcp", "cae", "finite-element", "automation"]
+dependencies = [
+    "mcp>=2.0,<3",
+    "anyio>=4.9",
+]
+
+[project.scripts]
+abaqus-mcp-server = "abaqus_mcp.server:main"
+abaqus-mcp-check = "abaqus_mcp.cli:check_main"
+abaqus-mcp-doctor = "abaqus_mcp.cli:doctor_main"
+abaqus-mcp-setup = "abaqus_mcp.cli:setup_main"
+abaqus-mcp-stop = "abaqus_mcp.cli:stop_main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["abaqus_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["stops_bridge: stops the running Abaqus/CAE bridge; run it explicitly with -m stops_bridge"]
+addopts = "-m \"not stops_bridge\""

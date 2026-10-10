@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.13.0"
+          enable-cache: false
+
+      - name: Check that the tag matches the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = (uv run --locked python -c "import abaqus_mcp; print(abaqus_mcp.__version__)").Trim()
+          if ("v$version" -ne $env:TAG) { throw "Tag $env:TAG does not match package version $version" }
+
+      # GitHub 运行器上没有 Abaqus/CAE，只运行不需要桥接的测试
+      - name: Run the tests that do not need Abaqus/CAE
+        run: uv run --locked pytest -k "tools_and_resources_are_listed or plugin_version_matches_package or arguments_are_validated"
+
+      - name: Build the Windows release
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_release.ps1
+
+      - name: Smoke test the built exe
+        env:
+          ABAQUS_MCP_TEST_SERVER: ${{ github.workspace }}\dist\abaqus-mcp-server.exe
+        run: uv run --locked pytest -k "tools_and_resources_are_listed or arguments_are_validated"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: gh release create $env:TAG "dist/abaqus-mcp-$env:TAG-windows-x64.zip" "dist/abaqus-mcp-$env:TAG-windows-x64.zip.sha256" --repo $env:REPO --verify-tag --generate-notes --title "Abaqus MCP $env:TAG"
