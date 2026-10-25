@@ -33,6 +33,9 @@ try {
     New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repo 'dist\abaqus-mcp-server.exe') -Destination $releaseDir -Force
     Copy-Item -LiteralPath (Join-Path $repo 'abaqus_mcp\gui_plugin.py') -Destination (Join-Path $releaseDir 'abaqus_mcp_plugin.py') -Force
+    $skillsDir = Join-Path $releaseDir 'skills'
+    New-Item -ItemType Directory -Path $skillsDir -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repo 'skills\abaqus-mcp-iteration') -Destination $skillsDir -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $repo 'docs\windows-release.md') -Destination (Join-Path $releaseDir 'README.md') -Force
     Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $releaseDir -Force
     Copy-Item -LiteralPath (Join-Path $repo 'THIRD_PARTY_NOTICES.md') -Destination $releaseDir -Force

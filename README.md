@@ -49,7 +49,7 @@ Abaqus MCP 是一套本地 MCP 服务端加一个 Abaqus/CAE 插件，让 Claude
 把下面的提示词复制给有本地文件和终端权限的 Claude Code、Codex 等 AI 代理。它会完成上面的四步并做连接测试，中间会提醒你在 Abaqus/CAE 中启动桥接：
 
 ```text
-请在这台 Windows 电脑上安装并配置 https://github.com/LuckYang1/abaqus-mcp 。先阅读仓库 README，再检查我当前使用的 MCP 客户端。从 GitHub Releases 下载最新版本的 abaqus-mcp-v<版本>-windows-x64.zip 和同名的 .sha256 文件，核对 SHA-256 后解压到 C:\Abaqus-MCP。把其中的 abaqus_mcp_plugin.py 复制到 %USERPROFILE%\abaqus_plugins（文件夹不存在就新建）。如果插件目录里已有其他 Abaqus MCP 插件（例如 abaqus_mcp_gui_plugin.py 或 mcp_control 文件夹），或者 MCP 客户端里已有指向其他 Abaqus MCP 的配置，先列出来告诉我，等我同意后再移走或替换。接着把 C:\Abaqus-MCP\abaqus-mcp-server.exe 按 stdio 方式配置到我当前的 MCP 客户端，服务名为 abaqus，客户端的工具超时设为 3700 秒（Claude Code 用 claude mcp add-json 写入 "timeout": 3700000，Codex 在 config.toml 中写 tool_timeout_sec = 3700），不改动无关的 MCP 配置。配置完成后提醒我打开 Abaqus/CAE 2024 或更新版本，并选择 Plug-ins → Abaqus MCP → Start MCP Bridge。然后开启新的客户端会话，实际调用 ping，再调用 run_python，代码为 result = list(mdb.models.keys())。最后报告安装路径和实际测试结果；如果当前无法启动 Abaqus/CAE，说明已完成哪些步骤、还差哪项实测。
+请在这台 Windows 电脑上安装并配置 https://github.com/LuckYang1/abaqus-mcp 。先阅读仓库 README，再检查我当前使用的 MCP 客户端。从 GitHub Releases 下载最新版本的 abaqus-mcp-v<版本>-windows-x64.zip 和同名的 .sha256 文件，核对 SHA-256 后解压到 C:\Abaqus-MCP。把其中的 abaqus_mcp_plugin.py 复制到 %USERPROFILE%\abaqus_plugins（文件夹不存在就新建）。如果插件目录里已有其他 Abaqus MCP 插件（例如 abaqus_mcp_gui_plugin.py 或 mcp_control 文件夹），或者 MCP 客户端里已有指向其他 Abaqus MCP 的配置，先列出来告诉我，等我同意后再移走或替换。接着把 C:\Abaqus-MCP\abaqus-mcp-server.exe 按 stdio 方式配置到我当前的 MCP 客户端，服务名为 abaqus，客户端的工具超时设为 3700 秒（Claude Code 用 claude mcp add-json 写入 "timeout": 3700000，Codex 在 config.toml 中写 tool_timeout_sec = 3700），不改动无关的 MCP 配置。再把 C:\Abaqus-MCP\skills\abaqus-mcp-iteration 整个文件夹复制到我当前客户端的用户 skill 目录（Claude Code 为 %USERPROFILE%\.claude\skills，Codex 为 %USERPROFILE%\.agents\skills，文件夹不存在就新建）。配置完成后提醒我打开 Abaqus/CAE 2024 或更新版本，并选择 Plug-ins → Abaqus MCP → Start MCP Bridge。然后开启新的客户端会话，实际调用 ping，再调用 run_python，代码为 result = list(mdb.models.keys())。最后报告安装路径和实际测试结果；如果当前无法启动 Abaqus/CAE，说明已完成哪些步骤、还差哪项实测。
 ```
 
 ## 工具
@@ -101,6 +101,20 @@ Abaqus MCP 是一套本地 MCP 服务端加一个 Abaqus/CAE 插件，让 Claude
 *   AI 调用 `ping` 返回 `NOT_STARTED`（连接被拒绝）时，说明 Abaqus/CAE 没有打开，或者没有选择 Start MCP Bridge。
 *   更新插件后要重启 CAE。
 *   从源码安装时还可以使用命令行诊断工具，见[从源码安装](#从源码安装)。
+
+## 经验记录 skill
+
+`skills/abaqus-mcp-iteration` 是一个可选的 skill，发行包中位于 `C:\Abaqus-MCP\skills\abaqus-mcp-iteration`。安装后，AI 在调用本 MCP、操作 Abaqus/CAE、调试或检查模型时，会把下面几类情况当场写成记录文件：
+
+*   缺少需要的工具，只能用 `run_python` 绕过或者做不到。
+*   某个工具有更好的参数、返回内容或实现方式。
+*   MCP 报错、卡住或行为与说明不符。
+*   遇到问题并找到了解决方法。
+*   用户讲述的使用经验。
+
+记录保存在 `%USERPROFILE%\.abaqus-mcp\feedback`，每条记录一个 Markdown 文件；设置环境变量 `ABAQUS_MCP_FEEDBACK_DIR` 可以换到其他目录。以后对 AI 说“根据积累的记录改进 abaqus-mcp”，它会在本仓库中整理记录、修改代码、运行测试，并把处理过的记录标为已处理。用户同意后，AI 也可以把记录整理成 issue 提交到本仓库。
+
+安装方法：把整个 `abaqus-mcp-iteration` 文件夹复制到 `%USERPROFILE%\.claude\skills`（Claude Code）或 `%USERPROFILE%\.agents\skills`（Codex），文件夹不存在就新建，然后新开一个对话。
 
 ## 工作原理
 

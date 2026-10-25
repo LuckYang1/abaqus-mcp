@@ -1,6 +1,6 @@
 [project]
 name = "abaqus-mcp"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local MCP server and Abaqus/CAE bridge plugin merged from Abaqus-Control-MCP 2.0.0 and the CAE-Agent-Hub Abaqus MCP 5.0.0."
 readme = "README.md"
 requires-python = ">=3.10"

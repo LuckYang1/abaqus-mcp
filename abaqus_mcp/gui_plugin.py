@@ -28,7 +28,7 @@ import time
 import traceback
 import uuid
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 HOST = os.environ.get("ABAQUS_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("ABAQUS_MCP_PORT", "48152"))

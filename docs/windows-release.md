@@ -4,6 +4,7 @@
 
 *   `abaqus-mcp-server.exe`：MCP 服务端，自带 Python 运行环境，由 AI 客户端自动启动，不需要双击。
 *   `abaqus_mcp_plugin.py`：Abaqus/CAE 插件。
+*   `skills\abaqus-mcp-iteration`：可选安装的 skill，让 AI 在使用过程中记录 MCP 的不足和使用经验。
 *   `SHA256SUMS.txt`：exe 的 SHA-256 校验值。
 *   `LICENSE`、`THIRD_PARTY_NOTICES.md`：许可与来源说明。
 
@@ -31,4 +32,8 @@
 
 4.  打开 Abaqus/CAE 2024 或更新版本，选择 **Plug-ins → Abaqus MCP → Start MCP Bridge**。在 AI 客户端里新开一个对话，对它说：“调用 abaqus 的 ping，再用 run_python 执行 result = list(mdb.models.keys())”。能返回模型列表，就说明安装成功。
 
-每次打开 Abaqus/CAE 后都要选择一次 Start MCP Bridge。更多说明见 <https://github.com/LuckYang1/abaqus-mcp>。
+每次打开 Abaqus/CAE 后都要选择一次 Start MCP Bridge。
+
+（可选）安装经验记录 skill：把 `C:\Abaqus-MCP\skills\abaqus-mcp-iteration` 整个文件夹复制到 `%USERPROFILE%\.claude\skills`（Claude Code）或 `%USERPROFILE%\.agents\skills`（Codex），文件夹不存在就新建。
+
+更多说明见 <https://github.com/LuckYang1/abaqus-mcp>。
