@@ -46,6 +46,32 @@ mdb.Job(name=job_name, model=model_name, numCpus=1)
 result = {'model': model_name, 'job': job_name, 'elements': len(part.elements)}
 """
 
+# 第二个分析步：修改荷载、取消边界条件并移除单元，用于检查各分析步中的状态
+UNLOAD_STEP = r"""
+model = mdb.models[model_name]
+model.StaticStep(name='Unload', previous='Load')
+model.loads['Tip'].setValuesInStep(stepName='Unload', magnitude=0.5)
+model.boundaryConditions['Fix'].deactivate('Unload')
+model.ModelChange(name='Remove', createStepName='Unload', region=model.rootAssembly.instances['Beam-1'].sets['ALL'],
+                  activeInStep=False)
+result = list(model.steps.keys())
+"""
+
+# 在梁之外加一个没有约束、没有连接的方块：求解器报告未连接区域与零主元，产生只差数字的重复警告
+LOOSE_BLOCK = r"""
+model = mdb.models[model_name]
+sketch = model.ConstrainedSketch(name='block', sheetSize=10.0)
+sketch.rectangle(point1=(2.0, 0.0), point2=(2.2, 0.2))
+block = model.Part(name='Loose', dimensionality=THREE_D, type=DEFORMABLE_BODY)
+block.BaseSolidExtrude(sketch=sketch, depth=0.2)
+block.Set(name='ALL', cells=block.cells)
+block.SectionAssignment(region=block.sets['ALL'], sectionName='Section')
+block.seedPart(size=0.1)
+block.generateMesh()
+model.rootAssembly.Instance(name='Loose-1', part=block, dependent=ON)
+result = len(block.elements)
+"""
+
 REMOVE_MODEL = r"""
 from abaqus import mdb
 if job_name in mdb.jobs:
@@ -56,19 +82,24 @@ result = {'models': list(mdb.models.keys()), 'jobs': list(mdb.jobs.keys())}
 """
 
 
-def server_parameters() -> StdioServerParameters:
+BRIDGE_PORT = 48152
+# 本机没有任何程序监听的端口，用于检查连接被拒绝时的说明
+IDLE_PORT = 48199
+
+
+def server_parameters(port: int = BRIDGE_PORT) -> StdioServerParameters:
     executable = os.environ.get("ABAQUS_MCP_TEST_SERVER")
     command, args = (executable, []) if executable else (sys.executable, ["-m", "abaqus_mcp"])
     return StdioServerParameters(command=command, args=args, env={
         "ABAQUS_MCP_HOST": "127.0.0.1",
-        "ABAQUS_MCP_PORT": "48152",
+        "ABAQUS_MCP_PORT": str(port),
         "ABAQUS_MCP_TIMEOUT": "120",
     })
 
 
 @asynccontextmanager
-async def mcp_session():
-    async with stdio_client(server_parameters()) as (read, write):
+async def mcp_session(port: int = BRIDGE_PORT):
+    async with stdio_client(server_parameters(port)) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
             yield session

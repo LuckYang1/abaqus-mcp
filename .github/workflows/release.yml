@@ -34,7 +34,7 @@ jobs:
 
       # GitHub 运行器上没有 Abaqus/CAE，只运行不需要桥接的测试
       - name: Run the tests that do not need Abaqus/CAE
-        run: uv run --locked pytest -k "tools_and_resources_are_listed or plugin_version_matches_package or arguments_are_validated"
+        run: uv run --locked pytest -k "tools_and_resources_are_listed or plugin_version_and_protocol_match_package or arguments_are_validated"
 
       - name: Build the Windows release
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/build_windows_release.ps1

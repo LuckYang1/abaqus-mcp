@@ -24,7 +24,8 @@
 |---|---|
 | 新增工具 | `abaqus_mcp/server.py` 中用 `@mcp.tool` 新增工具；在内核中执行的代码放进 `abaqus_mcp/kernel_code.py`，用 `render` 填入参数 |
 | 改进现有工具 | `server.py` 中对应的工具函数，以及 `kernel_code.py` 中对应的代码模板 |
-| 插件、桥接、线程、取消、编码问题 | `abaqus_mcp/gui_plugin.py`、`client.py`、`protocol.py` |
+| `run_python` 的执行方式：命名空间、结果转换、错误诊断、脚本文件运行 | `abaqus_mcp/kernel_wrapper.py`（每次调用随请求发给插件，在内核中执行；修改后不必重启 CAE） |
+| 插件、桥接、线程、取消、超时后的结果收集 | `abaqus_mcp/gui_plugin.py`、`client.py`、`protocol.py`；插件与服务端之间的请求格式变化时，同时把 `kernel_wrapper.py` 与 `gui_plugin.py` 中的 `PROTOCOL` 加一 |
 | 智能体使用 MCP 或 Abaqus 的规则 | `server.py` 中的 `INSTRUCTIONS`（英文，会在初始化时下发给所有客户端，并通过 `abaqus://agent-instructions` 提供） |
 | 安装、配置、诊断方法 | `README.md`、`docs/windows-release.md` |
 
@@ -40,7 +41,7 @@
 
 ## 4. 测试
 
-1.  修改了 `gui_plugin.py` 时，同时把三处版本号保持一致（见第 6 步），运行 `uv run abaqus-mcp-setup` 把新插件写入插件目录，再请用户重启 Abaqus/CAE 并选择 **Plug-ins → Abaqus MCP → Start MCP Bridge**。
+1.  修改了 `gui_plugin.py` 时，同时把三处版本号保持一致（见第 6 步），运行 `uv run abaqus-mcp-setup` 把新插件写入插件目录，再请用户重启 Abaqus/CAE 并选择 **Plug-ins → Abaqus MCP → Start MCP Bridge**。重启会丢失 CAE 中未保存的模型，重启前先征得用户同意。只修改 `kernel_wrapper.py`、`kernel_code.py` 或 `server.py` 时不需要重启 CAE。
 2.  新增工具时，更新 `tests/test_live_bridge.py` 中的 `EXPECTED_TOOLS`，并为新工具或新行为编写连接真实 CAE 的测试。测试不使用 mock。
 3.  运行 `uv run pytest`，全部通过后再继续。失败时修改代码并重新测试。
 4.  用 MCP 按记录中的“场景”实际操作一遍，确认原来的问题已经解决。

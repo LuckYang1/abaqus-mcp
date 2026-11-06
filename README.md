@@ -42,7 +42,7 @@ Abaqus MCP 是一套本地 MCP 服务端加一个 Abaqus/CAE 插件，让 Claude
 
 4.  **启动并测试**。打开 Abaqus/CAE，选择 **Plug-ins → Abaqus MCP → Start MCP Bridge**，消息区出现 “bridge listening on 127.0.0.1:48152” 表示桥接已启动。然后在 AI 客户端里新开一个对话，对它说：“调用 abaqus 的 ping，再用 run_python 执行 result = list(mdb.models.keys())”。能返回模型列表，就说明安装成功。
 
-每次打开 Abaqus/CAE 后都要选择一次 Start MCP Bridge。插件菜单还有 **Bridge Status**（在消息区打印版本、端口、已处理请求数、排队数和运行时长）和 **Stop MCP Bridge**。
+默认每次打开 Abaqus/CAE 后都要选择一次 Start MCP Bridge。想让 CAE 启动时自动开启桥接，就新建 Windows 用户环境变量 `ABAQUS_MCP_AUTOSTART`，值为 `1`（开始菜单搜索“编辑账户的环境变量”），之后从开始菜单或桌面打开的 CAE 都会自动启动桥接，消息区显示 “bridge listening on 127.0.0.1:48152 (started automatically)”。同时打开多个 CAE 时只有第一个能占用 48152 端口，其余的 CAE 只在消息区说明启动失败。插件菜单还有 **Bridge Status**（在消息区打印版本、协议版本、端口、是否自动启动、已处理请求数、排队数和运行时长）和 **Stop MCP Bridge**。
 
 ### 让 AI 代理自动安装
 
@@ -56,19 +56,45 @@ Abaqus MCP 是一套本地 MCP 服务端加一个 Abaqus/CAE 插件，让 Claude
 
 所有工具都可以传入 `timeout`（秒），用于单独调整这一次调用的等待时间。
 
-*   `ping`：检查连接，返回 Python 与 Abaqus 版本、进程号、工作目录、模型、视口和桥接运行信息。默认等待 10 秒。
+连接与执行代码：
+
+*   `ping`：检查连接，返回 Python 与 Abaqus 版本、进程号、工作目录、模型、视口、桥接运行信息（含协议版本、是否自动启动、CAE 启动目录 `gui_cwd`）和本对话命名空间的情况。默认等待 10 秒。
 *   `check_abaqus_connection`：用一段文字给出连接状态、Abaqus 版本、模型、视口和工作目录。默认等待 10 秒。
-*   `run_python(code)`：在 Abaqus 内核执行 Python。单个表达式返回其值，多条语句返回赋给 `result` 的值；同时返回标准输出、错误位置、调用链和修改建议。
-*   `execute_script(script)`：`run_python` 的文本形式，返回标准输出和 JSON 格式的返回值。
+*   `run_python(code, namespace)`：在 Abaqus 内核执行 Python。单个表达式返回其值，多条语句返回赋给 `result` 的值；同时返回标准输出、错误位置、调用链和修改建议。Abaqus 常量、numpy 数值、元组键、`NaN` 与无穷大都转换为 JSON，无法转换的对象写成 repr 文本并在 `replaced` 中列出路径。命名空间见[命名空间](#命名空间)。
+*   `execute_script(script, namespace)`：`run_python` 的文本形式，返回标准输出和 JSON 格式的返回值。
+*   `run_script_file(path, args, variables, result_variable, fresh_modules, cwd, namespace)`：按 `abaqus cae noGUI` 的方式运行脚本文件：按 UTF-8 读取并用真实路径编译（报错指向文件和行号），设置 `__file__`、`__name__ == '__main__'` 和 `sys.argv`，把脚本目录加入 `sys.path`，`variables` 放入脚本的全局变量，返回 `result_variable` 的值。`fresh_modules` 中目录下已导入的模块先从 `sys.modules` 移除并删除其 `.pyc`，脚本导入的是最新代码；`cwd` 只在脚本运行期间切换工作目录。脚本的全局变量随后以 `last_script_globals` 留在命名空间中。
+*   `reset_namespace(namespace)`：把命名空间恢复到初始状态。
+*   `get_execution(execution_id, wait_seconds)`：按 `executionId` 查看一次调用的状态（`QUEUED`、`RUNNING`、`COMPLETED`、`FAILED`、`CANCELLED`）和时间；超时后仍在运行的调用结束后，可以用它取回返回值或错误，结果可以重复读取。桥接保留启动以来最近 200 次调用，以及最近 20 次调用方已停止等待的调用的结果。
+
+模型检查：
+
 *   `set_workdir(path)`：把 CAE 工作目录切换到已存在的绝对路径，返回切换前后的路径。
 *   `get_model_info`：列出所有模型的部件、材料、截面、分析步、载荷、边界条件、相互作用、约束、幅值、实例、集合、表面和部件拓扑数量，以及作业和视口。每个名称列表最多 200 项，`counts` 给出完整数量，`truncated` 标出被截断的列表。
+*   `get_step_states(model, kinds, names, steps, max_entries)`：按分析步顺序列出载荷、边界条件、相互作用（含单元生死 `ModelChange`）、预定义场、场输出与历史输出请求的创建分析步、区域和属性，以及状态或数值发生变化的分析步（`CREATED`、`MODIFIED`、`DEACTIVATED` 和对应 `...State` 为 `SET` 的数值）；`steps` 汇总每个分析步的类型、时间、增量设置，以及在该步创建、修改、取消的对象。`kinds`、`names`、`steps`（fnmatch 通配符）缩小范围。
+*   `write_input(model, directory, job_name, keywords, name_filter, max_data_lines, max_blocks, keep_file)`：用临时作业写出模型的 inp 文件，用 Abaqus 自带的 `inpParser` 解析，返回每个关键字的数量，以及 `keywords` 和 `name_filter`（对 `name=` 参数的正则表达式）选中的关键字的参数、注释和前 `max_data_lines` 行数据，并列出 `*Include` 文件及其中缺失的文件。`inpParser` 给出的关键字名为小写且不含空格，参数值为大写；准确原文看文件。写完后恢复工作目录、删除临时作业；`keep_file=false` 时同时删除 inp 文件。
+*   `find_keyword_blocks(model, pattern, context)`：按正则表达式查找模型关键字块（以 `storeNodesAndElements=False` 同步），返回匹配块的位置与内容，`context` 附带前后相邻块的首行。
+*   `edit_keyword_block(model, action, anchor, text, expect_count)`：在关键字块中 `insert_after`、`insert_before`、`replace` 或 `delete`。`anchor` 是块的位置或正则表达式，匹配的块数必须正好等于 `expect_count`，否则不做任何修改；与已有块完全相同的文本拒绝插入；文本含 `*Node`、`*Element` 数据时给出警告（同步时这些数据行会被丢弃，应放入单独文件并用 `*Include` 引用）。改完用 `write_input` 检查。
+*   `api_help(target, rpy_dirs, max_examples)`：查看 Abaqus 脚本方法或对象，例如 `Model.PorePressure`、`Part.Set`、`mdb.models['Model-1'].SoilsStep`。返回 `__doc__`（Abaqus 2024 部分方法的 `__doc__` 给出过时的关键字）、可用时的 Python 签名，以及 `abaqus.rpy` 中实际记录的调用（按文件从新到旧）与各关键字的使用次数。默认读取 CAE 启动目录和当前工作目录中的 `abaqus.rpy*`，也可以用 `rpy_dirs` 指定目录。
+
+作业与结果：
+
 *   `list_jobs`：列出当前 CAE 会话中的作业及其状态、模型、CPU 数等设置。
-*   `submit_job(job_name)`：提交已有作业并等待求解结束，返回最终状态与证据。默认最长等待 3600 秒；超时后作业继续运行，结果中的 `submittedAt` 可作为 `monitor_job_status` 的 `since`。
-*   `monitor_job_status(job_name, terminate, since)`：不带作业名时列出作业；带作业名时综合 CAE 状态与 `.log`、`.sta`、`.dat`、`.msg`、`.lck` 文件，给出 `COMPLETED`、`FAILED`、`TERMINATED`、`RUNNING`、`SUBMITTED` 或 `UNKNOWN`，以及当前分析步、增量步、错误和警告。证据冲突或无法确认属于本次运行时返回 `UNKNOWN`；`since` 用于排除旧文件。`terminate=true` 用当前 Abaqus 版本的启动程序（内核环境变量 `ABA_COMMAND`）执行 `terminate`，Abaqus 收尾约需一分钟，之后再调用一次确认状态为 `TERMINATED` 且锁文件已消失。
-*   `inspect_odb(odb_path, step, frame, variable, set_name, component, history_region, history_variable, max_points)`：只读打开 ODB，列出分析步（起始、结束和持续时间）、抽样帧、场变量（分量、不变量和输出位置）、历史区域和集合；可统计指定分析步、帧、集合、分量的场变量最小值和最大值，或返回抽样后的历史曲线。向量不指定分量时统计模长，张量必须指定分量。
+*   `submit_job(job_name, wait, datacheck, close_open_odb)`：提交已有作业。`wait=true`（默认）时等待求解结束并返回最终状态与证据，最长等待 3600 秒，超时后作业继续运行；`wait=false` 时作业进入提交或运行状态即返回。结果中的 `submittedAt` 用作 `monitor_job_status` 的 `since`。`datacheck=true` 只做数据检查。作业的 ODB 在会话中打开时拒绝提交（求解器无法写入被锁定的 ODB），`close_open_odb=true` 先关闭它再提交。
+*   `monitor_job_status(job_name, terminate, since, directory, wait_seconds, until, warning_detail)`：不带作业名时列出作业；带作业名时综合 CAE 状态、本机求解进程（`standard.exe`、`explicit.exe`、`pre.exe` 等，按命令行中的作业名和 `-indir`、`-outdir` 目录区分）与 `.log`、`.sta`、`.dat`、`.msg`、`.lck` 文件，给出 `COMPLETED`、`FAILED`、`TERMINATED`、`RUNNING`、`SUBMITTED`、`DEAD`（文件停在没有结束标记的状态且求解进程已不存在）或 `UNKNOWN`，以及当前分析步、增量步和最近的进度行。错误和警告扫描整个 `.msg`、`.dat` 文件，按去掉数字后的正文分组计数，每组保留首次出现的位置和完整多行原文；`warning_detail` 传入某一组的 `key`，列出该组每次出现的位置。`directory` 查看 CAE 工作目录之外的作业文件夹，不切换工作目录；这类作业和不是本 CAE 会话提交的作业（例如命令行运行的作业）只按文件和求解进程判断。`since` 用于排除旧文件。`wait_seconds` 等到条件 `until` 成立：`terminal`（默认，结束）、`step>=N` 或 `changed`（状态、分析步、增量步或文件有变化）。`terminate=true` 用当前 Abaqus 版本的启动程序（内核环境变量 `ABA_COMMAND`）终止本 CAE 会话中的作业，Abaqus 收尾约需一分钟，之后再调用一次确认状态为 `TERMINATED` 且锁文件已消失。
+*   `inspect_odb(odb_path, step, frame, variable, set_name, component, history_region, history_variable, max_points)`：读取 ODB，列出分析步（起始、结束和持续时间）、抽样帧、场变量（分量、不变量和输出位置）、历史区域和集合；可统计指定分析步、帧、集合、分量的场变量最小值和最大值，或返回抽样后的历史曲线。向量不指定分量时统计模长，张量必须指定分量。会话中已打开的 ODB（列在 `openBeforeCall` 中）直接读取并保持打开；其他 ODB 以只读方式打开，读完关闭。
 *   `get_odb_info(odb_path)`：只返回 ODB 概况，等同于不带统计参数的 `inspect_odb`。
+*   `list_open_odbs`：列出会话中打开的 ODB 的路径、是否只读和显示它们的视口。打开的 ODB 会锁定文件，所在文件夹无法清理。
+*   `close_odbs(pattern, include_displayed)`：关闭路径与 `pattern`（fnmatch 通配符，不区分大小写，例如 `*\trthru.odb`）匹配的 ODB。正在视口中显示的 ODB 默认跳过，`include_displayed=true` 时一并关闭。
 *   `capture_viewport(viewport_name, image_format, save_path)`：PNG、TIFF 以 MCP 图片返回，可同时保存；SVG、EPS、PS 必须提供保存路径。结构化结果中不含图片的 base64。
 *   `get_viewport_image(viewport_name, image_format)`：以 data URI 文本返回 PNG 或 TIFF 图片。
+
+## 命名空间
+
+*   每个对话由客户端启动一个服务端进程，每个服务端进程在内核中使用自己的命名空间（`conversation-` 加随机编号），各对话的变量互不影响，同一对话内的变量在多次调用之间保留。`namespace` 参数可以指定其他名称，例如让几个对话共用一个命名空间。内核最多保留最近使用的 32 个命名空间。
+*   命名空间的初始内容与 CAE 命令行相同：`from abaqus import *`、`from abaqusConstants import *`、`from caeModules import *`、`regionToolset`、`odbAccess`。例外是 `sum` 和 `pow` 保持 Python 内置函数；`from abaqus import *` 会用 XY 数据版本覆盖它们，需要时写 `abaqus.sum`、`abaqus.pow`。
+*   给 `part`、`mesh`、`step`、`load`、`job` 等 Abaqus 模块名赋值后，返回结果带有 `warnings`，提示该名称已不再指向模块。
+*   `abaqus_error_text(e)` 返回 Abaqus 异常的正文。Abaqus 2024 的 `AbaqusNameError` 正文是按 GBK 解码的 UTF-8 字节，显示为乱码，这个函数和 `run_python` 的错误信息都会把它恢复为原文（原样文本在 `raw_message` 中）；Abaqus 的 `TypeError` 用 `repr(e)` 或 `e.args` 只能得到 `ExceptionValue` 对象，要用 `str(e)` 或这个函数。
+*   一个命名空间第一次使用或被重置时，返回结果带有 `namespace`，说明以前的变量已不存在。
 
 ## 资源
 
@@ -76,11 +102,13 @@ Abaqus MCP 是一套本地 MCP 服务端加一个 Abaqus/CAE 插件，让 Claude
 *   `abaqus://status`：与上一项相同。
 *   `abaqus://agent-instructions`：给智能体的工作规则，与服务端初始化时下发的说明相同。
 
-## 超时与结果未知
+## 超时与后续查询
 
-*   默认等待时间由 `ABAQUS_MCP_TIMEOUT` 决定（120 秒）。
-*   服务端发出请求时写入期限：发出时刻加 `timeout` 再加 5 秒。到期时仍未开始执行的请求被取消，状态为 `CANCELLED`，代码不会执行，可以重发。CAE 执行内核命令期间可能暂停插件的后台线程，插件会在前一个调用结束后才读到新请求；按发出时刻计算的期限保证超期的请求不会执行，这种情况下取消的回复要等前一个调用结束后才发出。
-*   服务端最多等待 `timeout + 10` 秒，收不到回复就返回 `UNKNOWN`；插件发现已经开始执行的调用超过 `timeout + 5` 秒时也返回 `UNKNOWN`。这时代码可能仍在运行，也可能已经运行完，先检查模型状态再决定是否重做。
+*   默认等待时间由 `ABAQUS_MCP_TIMEOUT` 决定（120 秒），各工具说明中写有当前的实际值。
+*   服务端发出请求时写入期限：发出时刻加 `timeout` 再加 5 秒。到期时仍未开始执行的请求被取消，状态为 `CANCELLED`，代码不会执行，可以重发。内核执行前一个调用期间插件的后台线程无法运行，插件在前一个调用结束后才读到新请求；按发出时刻计算的期限保证超期的请求不会执行，这种情况下取消的回复要等前一个调用结束后才发出。
+*   插件在图形界面主线程上用 `sendCommand` 把代码交给内核，`sendCommand` 要等内核执行完才返回，期间占用 Python 解释器锁，插件的后台线程都无法运行。所以内核执行代码期间，桥接对任何请求（包括 `ping`）都无法回复。
+*   服务端最多等待 `timeout + 10` 秒，收不到插件的回复就返回 `UNKNOWN`，错误类型为 `TimeoutError`。代码仍在运行时就是这种情况。代码在内核中继续运行，插件在结束后收集结果；用 `get_execution` 加同一个 `executionId` 查询状态并取回结果，它的回复在内核执行完这段代码后发出。不要重复发送建模命令。代码在期限前后刚好结束时，调用也可能返回 `RUNNING`，处理方法相同。
+*   长时间运行的建模脚本应传入更大的 `timeout`。
 *   客户端自身的工具超时必须比上面的等待时间更长。Claude Code 用服务端配置中的 `"timeout": 3700000`（毫秒），Codex 用 `tool_timeout_sec = 3700`，都覆盖 `submit_job` 默认的 3600 秒等待。
 
 ## 环境变量
@@ -92,13 +120,15 @@ Abaqus MCP 是一套本地 MCP 服务端加一个 Abaqus/CAE 插件，让 Claude
 *   `ABAQUS_MCP_PLUGIN_DIR`：从源码安装时 `abaqus-mcp-setup` 写入插件的目录，默认 `~/abaqus_plugins`。
 *   `ABAQUS_MCP_DEBUG`：设为 `1` 后插件写入有大小上限的调试日志；未开启时，启动桥接会清除以前留下的调试日志。
 *   `ABAQUS_MCP_LOG`：调试日志路径，默认在系统临时目录下的 `abaqus_mcp_plugin.log`。
+*   `ABAQUS_MCP_AUTOSTART`：设为 `1` 后插件在 CAE 启动时自动开启桥接，默认不开启。
 
 服务端读取 MCP 客户端配置中设置的环境变量，没有设置时使用上面的默认值。插件读取的是 Abaqus/CAE 进程的环境变量，修改后需要重启 CAE。
 
 ## 诊断
 
 *   在 CAE 中选择 **Plug-ins → Abaqus MCP → Bridge Status**，查看桥接是否在运行。
-*   AI 调用 `ping` 返回 `NOT_STARTED`（连接被拒绝）时，说明 Abaqus/CAE 没有打开，或者没有选择 Start MCP Bridge。
+*   AI 调用 `ping` 返回 `NOT_STARTED`（连接被拒绝）时，错误信息会区分两种情况：本机没有 Abaqus/CAE 图形界面进程，或者 CAE 正在运行（给出进程号）但没有启动桥接。
+*   错误类型为 `PluginMismatch` 时，CAE 中的插件与服务端不是同一版本（两者之间的协议版本不同），把同一发行包中的 `abaqus_mcp_plugin.py` 复制到 `%USERPROFILE%\abaqus_plugins` 后重启 CAE。
 *   更新插件后要重启 CAE。
 *   从源码安装时还可以使用命令行诊断工具，见[从源码安装](#从源码安装)。
 
@@ -127,8 +157,8 @@ flowchart LR
 ```
 
 *   服务端运行在 Abaqus 之外，可以用独立 exe，也可以用 Python 环境。
-*   插件运行在 Abaqus/CAE 图形界面进程内，在主线程上把代码交给内核执行。用户代码在一个持久命名空间中运行，变量在多次调用之间保留；每次调用前后都会清除 `result`。
-*   每次调用都有独立的 `executionId`，返回值、输出和错误诊断只属于这一次调用。
+*   插件运行在 Abaqus/CAE 图形界面进程内，只负责传递：服务端每次把内核包装代码（`abaqus_mcp/kernel_wrapper.py`）和请求一起发给插件，插件在图形界面主线程上用 `sendCommand` 交给内核执行。包装代码选择命名空间、运行用户代码、转换结果、诊断错误，并把结果写入临时文件，插件读取后返回。因此除协议版本变化外，改进内核功能只需更新服务端，不必重启 CAE。
+*   每次调用都有独立的 `executionId`，返回值、输出和错误诊断只属于这一次调用；插件记录每次调用的状态，供 `get_execution` 查询。
 *   CAE 只在两次调用之间的空闲时刻更新作业状态，所以 `submit_job` 等待求解时由服务端分多次短调用查询，等待期间 CAE 界面保持可用。
 
 ## 从源码安装
@@ -173,7 +203,7 @@ uv sync
 
 在项目目录中开发时，上面的命令行工具前加 `uv run` 即可运行，例如 `uv run abaqus-mcp-doctor --verify-connection`。
 
-测试连接真实的 Abaqus/CAE，运行前先在 CAE 中启动桥接。测试会建立名为 `McpTestShort`、`McpTestLong` 的临时模型和作业，作业文件写在 `.work\abaqus-runs\tests`，结束后删除这两个模型和作业并恢复原工作目录。`test_python2_abaqus_gets_a_clear_error` 需要 Abaqus 2021 安装在 `C:\SIMULIA\Commands2021`，用它检查 Python 2 版 Abaqus 的报错。
+测试连接真实的 Abaqus/CAE，运行前先在 CAE 中启动桥接。测试只在名称以 `McpTest` 开头的临时模型和作业中进行，作业文件、脚本、inp 和 rpy 测试文件写在 `.work\abaqus-runs\tests`，结束后删除这些模型和作业、关闭测试打开的 ODB 并恢复原工作目录；命名空间测试使用名为 `mcp-test-shared` 的共享命名空间，结束时将其重置。`test_refused_connection_names_the_running_cae` 使用本机无人监听的 48199 端口。`test_python2_abaqus_gets_a_clear_error` 需要 Abaqus 2021 安装在 `C:\SIMULIA\Commands2021`，用它检查 Python 2 版 Abaqus 的报错。
 
 ```bash
 uv run pytest

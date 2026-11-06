@@ -32,7 +32,9 @@
 
 4.  打开 Abaqus/CAE 2024 或更新版本，选择 **Plug-ins → Abaqus MCP → Start MCP Bridge**。在 AI 客户端里新开一个对话，对它说：“调用 abaqus 的 ping，再用 run_python 执行 result = list(mdb.models.keys())”。能返回模型列表，就说明安装成功。
 
-每次打开 Abaqus/CAE 后都要选择一次 Start MCP Bridge。
+默认每次打开 Abaqus/CAE 后都要选择一次 Start MCP Bridge。想让 CAE 启动时自动开启桥接，就新建 Windows 用户环境变量 `ABAQUS_MCP_AUTOSTART`，值为 `1`（开始菜单搜索“编辑账户的环境变量”），之后打开的 CAE 会自动启动桥接，消息区显示 “bridge listening on 127.0.0.1:48152 (started automatically)”。
+
+升级时同时替换 `abaqus-mcp-server.exe` 与 `%USERPROFILE%\abaqus_plugins\abaqus_mcp_plugin.py`，然后重启 Abaqus/CAE 和 AI 客户端。两者版本不一致时，工具返回错误类型 `PluginMismatch`。
 
 （可选）安装经验记录 skill：把 `C:\Abaqus-MCP\skills\abaqus-mcp-iteration` 整个文件夹复制到 `%USERPROFILE%\.claude\skills`（Claude Code）或 `%USERPROFILE%\.agents\skills`（Codex），文件夹不存在就新建。
 
